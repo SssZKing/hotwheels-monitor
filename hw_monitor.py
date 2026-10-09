@@ -11,6 +11,7 @@ Setup (once):
        HW_GMAIL_USER=<your Gmail address>
        HW_GMAIL_APP_PASSWORD=<the 16-character app password>
   3. Run:  python3 hw_monitor.py --loop 60      (checks every 60 seconds)
+     or      python3 hw_monitor.py --loop 60 --for 270   (stops after 4.5 minutes)
      or schedule `python3 hw_monitor.py` with cron / Task Scheduler.
 The first run records a baseline and sends nothing.
 Optional: HW_WATCH_SKUS=JJY69,JKC06 to alert only on those item numbers.
@@ -90,12 +91,17 @@ if __name__ == "__main__":
              "  https://creations.mattel.com/products/hot-wheels-rlc-exclusive-rwb-porsche-930-jjy69")
         print("Test email sent")
         sys.exit(0)
-    if len(sys.argv) == 3 and sys.argv[1] == "--loop":
+    if len(sys.argv) in (3, 5) and sys.argv[1] == "--loop":
+        # --loop SECONDS [--for TOTAL]: check every SECONDS, stopping after TOTAL seconds if given
+        every = max(30, int(sys.argv[2]))
+        stop = time.time() + int(sys.argv[4]) if len(sys.argv) == 5 and sys.argv[3] == "--for" else None
         while True:
             try:
                 check()
             except Exception as e:
                 print("check failed:", e)
-            time.sleep(max(30, int(sys.argv[2])))
+            if stop is not None and time.time() + every > stop:
+                break
+            time.sleep(every)
     else:
         check()

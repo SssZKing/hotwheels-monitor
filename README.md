@@ -1,6 +1,6 @@
 # Hot Wheels stock monitor
 
-Checks the [Mattel Creations Hot Wheels collectors collection](https://creations.mattel.com/collections/hot-wheels-collectors) every 5 minutes with GitHub Actions and emails when an item is new or back in stock. Apparel and merch are ignored.
+Checks the [Mattel Creations Hot Wheels collectors collection](https://creations.mattel.com/collections/hot-wheels-collectors) about once a minute with GitHub Actions (each 5-minute scheduled run checks every 60 seconds for 4.5 minutes) and emails when an item is new or back in stock. Apparel and merch are ignored.
 
 ## Setup
 
