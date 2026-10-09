@@ -14,3 +14,5 @@ Optional repository variable `HW_WATCH_SKUS` (e.g. `JJY69,JKC06`) limits alerts 
 The first run saves a baseline to `hw_state.json` and sends nothing. Later runs compare against it and commit changes back.
 
 GitHub's 5-minute schedule is best effort; runs are often delayed, and scheduled workflows pause after 60 days without repository activity (state commits count as activity).
+
+Because GitHub's scheduler has not been starting runs for this repository, each run also starts the next one when it finishes, so checks continue around the clock. To stop it, add a repository variable `HW_CHAIN` with the value `off` (Settings → Secrets and variables → Actions → Variables), or cancel the running job.

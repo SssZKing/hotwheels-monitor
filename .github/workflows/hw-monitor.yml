@@ -10,6 +10,7 @@ on:
         default: false
 permissions:
   contents: write
+  actions: write
 concurrency: hw-monitor
 jobs:
   check:
@@ -34,4 +35,10 @@ jobs:
           git config user.email "hw-monitor@users.noreply.github.com"
           git add hw_state.json
           git diff --cached --quiet || (git commit -m "Update stock state" && git pull --rebase -q origin main && git push)
-
+      # GitHub's scheduler isn't firing for this repo, so each run starts the next one.
+      # Set the repository variable HW_CHAIN to "off" to stop the chain.
+      - name: Start next run
+        if: ${{ !cancelled() && !inputs.test_email && vars.HW_CHAIN != 'off' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run hw-monitor.yml --repo "${{ github.repository }}" --ref main
