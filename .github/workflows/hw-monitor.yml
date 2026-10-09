@@ -1,0 +1,35 @@
+name: Hot Wheels stock monitor
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+    inputs:
+      test_email:
+        description: "Send a test email instead of checking the store"
+        type: boolean
+        default: false
+permissions:
+  contents: write
+concurrency: hw-monitor
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Check store
+        env:
+          HW_GMAIL_USER: ${{ secrets.HW_GMAIL_USER }}
+          HW_GMAIL_APP_PASSWORD: ${{ secrets.HW_GMAIL_APP_PASSWORD }}
+          HW_EMAIL_TO: ${{ secrets.HW_GMAIL_USER }}
+          HW_WATCH_SKUS: ${{ vars.HW_WATCH_SKUS }}
+        run: python3 hw_monitor.py ${{ inputs.test_email && '--test' || '' }}
+      - name: Save state
+        run: |
+          git config user.name "hw-monitor"
+          git config user.email "hw-monitor@users.noreply.github.com"
+          git add hw_state.json
+          git diff --cached --quiet || (git commit -m "Update stock state" && git push)
