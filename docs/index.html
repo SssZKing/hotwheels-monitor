@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hot Wheels Stock</title>
+<style>
+:root {
+  --bg: #f4f4f2; --surface: #fcfcfb; --border: #e2e1dc; --grid: #ecebe6;
+  --text: #0b0b0b; --text2: #52514e; --muted: #7a7974; --accent: #2a78d6;
+  --instock: #0ca30c; --soldout: #c9c8c2; --untracked: #ecebe6; --gone: #8a8984;
+  --pill-in-bg: #e5f5e5; --pill-in: #006300; --pill-out-bg: #efeeea; --pill-out: #52514e;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #111110; --surface: #1a1a19; --border: #2e2e2c; --grid: #262624;
+    --text: #f0efec; --text2: #c3c2b7; --muted: #8f8e88; --accent: #3987e5;
+    --soldout: #4a4a47; --untracked: #242422; --gone: #77766f;
+    --pill-in-bg: #143514; --pill-in: #7fdc7f; --pill-out-bg: #2a2a28; --pill-out: #c3c2b7;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #111110; --surface: #1a1a19; --border: #2e2e2c; --grid: #262624;
+  --text: #f0efec; --text2: #c3c2b7; --muted: #8f8e88; --accent: #3987e5;
+  --soldout: #4a4a47; --untracked: #242422; --gone: #77766f;
+  --pill-in-bg: #143514; --pill-in: #7fdc7f; --pill-out-bg: #2a2a28; --pill-out: #c3c2b7;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text);
+  font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+a { color: inherit; }
+.wrap { max-width: 1100px; margin: 0 auto; padding: 24px 16px 48px; }
+h1 { font-size: 22px; margin: 0 0 4px; }
+.sub { color: var(--text2); margin: 0 0 16px; }
+.tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 16px; }
+.tile { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; }
+.tile b { display: block; font-size: 22px; font-variant-numeric: tabular-nums; }
+.tile span { color: var(--text2); font-size: 12px; }
+.controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
+.controls input[type=search] { flex: 1 1 240px; min-width: 0; padding: 8px 10px; font: inherit;
+  color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 6px; }
+.controls select { padding: 8px; font: inherit; color: var(--text); background: var(--surface);
+  border: 1px solid var(--border); border-radius: 6px; }
+.controls label { color: var(--text2); display: flex; gap: 6px; align-items: center; white-space: nowrap; }
+.note { color: var(--muted); font-size: 12px; margin: 0 0 12px; }
+.legend { display: flex; flex-wrap: wrap; gap: 14px; color: var(--text2); font-size: 12px; margin-bottom: 8px; }
+.legend i { display: inline-block; width: 14px; height: 10px; border-radius: 2px; vertical-align: -1px; margin-right: 5px; }
+.list { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.row { display: grid; grid-template-columns: 56px minmax(0, 1fr) 140px minmax(160px, 300px);
+  gap: 12px; align-items: center; padding: 10px 12px; border-top: 1px solid var(--grid); }
+.row:first-child { border-top: 0; }
+.head { color: var(--muted); font-size: 12px; padding-top: 8px; padding-bottom: 6px; }
+.thumb { width: 56px; height: 56px; border-radius: 6px; object-fit: contain; background: #fff; }
+.noimg { width: 56px; height: 56px; border-radius: 6px; background: var(--untracked); }
+.title { font-weight: 600; text-decoration: none; display: block; overflow: hidden; text-overflow: ellipsis; }
+.title:hover { text-decoration: underline; }
+.meta { color: var(--text2); font-size: 12px; font-variant-numeric: tabular-nums; }
+.pill { display: inline-flex; gap: 4px; align-items: center; padding: 2px 8px; border-radius: 999px;
+  font-size: 12px; font-weight: 600; white-space: nowrap; }
+.pill.in { background: var(--pill-in-bg); color: var(--pill-in); }
+.pill.out { background: var(--pill-out-bg); color: var(--pill-out); }
+.pill.gone { background: var(--pill-out-bg); color: var(--muted); }
+.when { color: var(--muted); font-size: 12px; margin-top: 3px; }
+.strip { width: 100%; height: 18px; display: block; cursor: crosshair; }
+.days { display: flex; justify-content: space-between; color: var(--muted); font-size: 11px; }
+.days.m { display: none; }
+.pct { color: var(--text2); font-size: 12px; margin-top: 3px; font-variant-numeric: tabular-nums; }
+.more { display: block; margin: 12px auto 0; padding: 8px 16px; font: inherit; color: var(--text);
+  background: var(--surface); border: 1px solid var(--border); border-radius: 6px; cursor: pointer; }
+.empty { padding: 24px; text-align: center; color: var(--text2); }
+#tip { position: fixed; pointer-events: none; background: var(--text); color: var(--bg); font-size: 12px;
+  padding: 4px 8px; border-radius: 4px; white-space: nowrap; display: none; z-index: 10; }
+@media (max-width: 720px) {
+  .tiles { grid-template-columns: repeat(2, 1fr); }
+  .row { grid-template-columns: 48px minmax(0, 1fr); }
+  .thumb, .noimg { width: 48px; height: 48px; }
+  .row > .status { grid-column: 2; }
+  .row > .hist { grid-column: 1 / -1; }
+  .head { display: none; }
+  .days.m { display: flex; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Hot Wheels stock tracker</h1>
+  <p class="sub">Every item in the Mattel Creations Hot Wheels collectors collection. <span id="checked"></span></p>
+  <div class="tiles">
+    <div class="tile"><b id="t-total">–</b><span>items shown</span></div>
+    <div class="tile"><b id="t-in">–</b><span>in stock now</span></div>
+    <div class="tile"><b id="t-out">–</b><span>sold out now</span></div>
+    <div class="tile"><b id="t-chg">–</b><span>restocks in last 7 days</span></div>
+  </div>
+  <div class="controls">
+    <input type="search" id="q" placeholder="Search name or item number (e.g. JJY69)" autocomplete="off">
+    <select id="status" aria-label="Status">
+      <option value="all">All items</option>
+      <option value="in">In stock</option>
+      <option value="out">Sold out</option>
+      <option value="changed">Changed in 7 days</option>
+    </select>
+    <select id="sort" aria-label="Sort">
+      <option value="recent">Recently changed</option>
+      <option value="name">Name</option>
+      <option value="price">Price (high to low)</option>
+      <option value="pct">Most time in stock</option>
+      <option value="new">Newest first</option>
+    </select>
+    <label><input type="checkbox" id="merch" checked> Hide apparel &amp; merch</label>
+  </div>
+  <p class="note">Mattel's store doesn't publish how many units are left, only whether each item can be bought,
+    so the bars show when each item was in stock over the last 7 days. Data is collected about once a minute.</p>
+  <div class="legend">
+    <span><i style="background:var(--instock)"></i>In stock</span>
+    <span><i style="background:var(--soldout)"></i>Sold out</span>
+    <span><i style="background:var(--gone)"></i>Removed from store</span>
+    <span><i style="background:var(--untracked);outline:1px solid var(--border)"></i>Not tracked yet</span>
+  </div>
+  <div class="list" id="list"><div class="empty">Loading…</div></div>
+  <button class="more" id="more" hidden>Show more</button>
+</div>
+<div id="tip"></div>
+<script>
+const SKIP = ["t-shirt", "shirt", "hoodie", "jacket", "jersey", "sweatshirt", "mug", "hat", "luggage", "pin"];
+const WEEK = 7 * 86400, PAGE = 60;
+const STATE_NAME = { 1: "In stock", 0: "Sold out", "-1": "Removed from store" };
+let items = [], shown = PAGE, now = Date.now() / 1000;
+
+// On GitHub Pages, read the data straight from the repository so it is never behind a Pages rebuild.
+function dataUrls() {
+  const m = location.hostname.match(/^([^.]+)\.github\.io$/);
+  const repo = location.pathname.split("/").filter(Boolean)[0];
+  const urls = [];
+  if (m && repo) urls.push(`https://raw.githubusercontent.com/${m[1]}/${repo}/main/docs/stock.json`);
+  urls.push("stock.json");
+  return { urls, owner: m && m[1], repo };
+}
+
+async function load() {
+  const { urls, owner, repo } = dataUrls();
+  let data;
+  for (const u of urls) {
+    try { const r = await fetch(u + "?t=" + Math.floor(Date.now() / 60000), { cache: "no-store" }); if (r.ok) { data = await r.json(); break; } } catch (e) {}
+  }
+  if (!data) { document.getElementById("list").innerHTML = '<div class="empty">Could not load stock data.</div>'; return; }
+  now = Date.now() / 1000;
+  items = Object.entries(data.items).map(([handle, d]) => prep(handle, d));
+  render();
+  if (owner && repo) lastChecked(owner, repo);
+}
+
+function prep(handle, d) {
+  const ev = d.events, last = ev[ev.length - 1];
+  const start = now - WEEK;
+  let inSecs = 0, tracked = 0, restocks = 0;
+  for (let i = 0; i < ev.length; i++) {
+    const a = Math.max(ev[i][0], start), b = i + 1 < ev.length ? ev[i + 1][0] : now;
+    if (b > a) { tracked += b - a; if (ev[i][1] === 1) inSecs += b - a; }
+    if (ev[i][1] === 1 && i > 0 && ev[i - 1][1] !== 1 && ev[i][0] >= start) restocks++;
+  }
+  const changes = ev.filter((e, i) => i > 0 && e[0] >= start);
+  const t = d.title.toLowerCase();
+  return { handle, ...d, state: last[1], since: last[0], firstEvent: ev[0][0], pct: tracked ? inSecs / tracked : 0,
+    tracked, restocks, changed: changes.length > 0, lastChange: changes.length ? changes[changes.length - 1][0] : 0,
+    merch: SKIP.some(w => t.includes(w)), search: (d.title + " " + d.sku).toLowerCase() };
+}
+
+function ago(t) {
+  const s = now - t;
+  if (s < 90) return "just now";
+  if (s < 3600) return Math.round(s / 60) + " min ago";
+  if (s < 86400 * 2) return Math.round(s / 3600) + " h ago";
+  return Math.round(s / 86400) + " days ago";
+}
+const fmtTime = t => new Date(t * 1000).toLocaleString([], { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+function filtered() {
+  const q = document.getElementById("q").value.trim().toLowerCase();
+  const st = document.getElementById("status").value, sort = document.getElementById("sort").value;
+  const hideMerch = document.getElementById("merch").checked;
+  let out = items.filter(i => (!hideMerch || !i.merch) && (!q || q.split(/\s+/).every(w => i.search.includes(w))) &&
+    (st === "all" || (st === "in" && i.state === 1) || (st === "out" && i.state === 0) || (st === "changed" && i.changed)));
+  const by = {
+    recent: (a, b) => (b.lastChange - a.lastChange) || (b.state - a.state) || a.title.localeCompare(b.title),
+    name: (a, b) => a.title.localeCompare(b.title),
+    price: (a, b) => (+b.price - +a.price),
+    pct: (a, b) => (b.pct - a.pct) || a.title.localeCompare(b.title),
+    new: (a, b) => (b.first_seen - a.first_seen) || a.title.localeCompare(b.title),
+  }[sort];
+  return out.sort(by);
+}
+
+function strip(i) {
+  const start = now - WEEK, W = 700, x = t => ((Math.max(t, start) - start) / WEEK) * W;
+  const color = { 1: "var(--instock)", 0: "var(--soldout)", "-1": "var(--gone)" };
+  let svg = `<rect x="0" y="0" width="${W}" height="18" rx="3" fill="var(--untracked)"/>`;
+  const ev = i.events;
+  for (let k = 0; k < ev.length; k++) {
+    const a = x(ev[k][0]), b = k + 1 < ev.length ? x(ev[k + 1][0]) : W;
+    if (b - a > 0.01) svg += `<rect x="${a.toFixed(2)}" y="0" width="${Math.max(b - a, 1).toFixed(2)}" height="18" fill="${color[ev[k][1]]}"/>`;
+  }
+  for (let d = 1; d < 7; d++) svg += `<line x1="${d * W / 7}" x2="${d * W / 7}" y1="0" y2="18" stroke="var(--surface)" stroke-width="1.5"/>`;
+  return `<svg class="strip" viewBox="0 0 ${W} 18" preserveAspectRatio="none" data-h="${esc(i.handle)}" role="img"
+    aria-label="${Math.round(i.pct * 100)}% of tracked time in stock over the last 7 days">${svg}</svg>`;
+}
+
+function dayLabels() {
+  const lab = [];
+  for (let d = 7; d >= 0; d -= 1) lab.push(d === 0 ? "now" : new Date((now - d * 86400) * 1000).toLocaleDateString([], { weekday: "short" }));
+  return `<div class="days">${lab.map(l => `<span>${l}</span>`).join("")}</div>`;
+}
+
+function row(i) {
+  const img = i.image ? `<img class="thumb" loading="lazy" alt="" onerror="this.style.visibility=\'hidden\'" src="${esc(i.image + (i.image.includes("?") ? "&" : "?") + "width=160")}">` : `<div class="noimg"></div>`;
+  const pill = i.state === 1 ? `<span class="pill in">✓ In stock</span>` : i.state === 0 ? `<span class="pill out">✕ Sold out</span>` : `<span class="pill gone">– Removed</span>`;
+  const verb = i.state === 1 ? (i.since > i.first_seen + 60 ? "Restocked" : "Listed") : i.state === 0 ? "Sold out" : "Removed";
+  const when = i.since > now - WEEK && i.events.length > 1 ? `${verb} ${ago(i.since)}` : i.first_seen > now - WEEK ? `Tracked since ${ago(i.first_seen)}` : "No change this week";
+  const coverage = i.tracked < WEEK - 600 ? " of tracked time" : "";
+  return `<div class="row">
+    ${img}
+    <div style="min-width:0"><a class="title" href="https://creations.mattel.com/products/${encodeURIComponent(i.handle)}" target="_blank" rel="noopener">${esc(i.title)}</a>
+      <div class="meta">${esc(i.sku || "no item number")} · $${esc(i.price)}</div></div>
+    <div class="status">${pill}<div class="when">${when}</div></div>
+    <div class="hist"><div class="days m"><span>7 days ago</span><span>now</span></div>${strip(i)}<div class="pct">In stock ${Math.round(i.pct * 100)}%${coverage}${i.restocks ? ` · ${i.restocks} restock${i.restocks > 1 ? "s" : ""}` : ""}</div></div>
+  </div>`;
+}
+
+function render() {
+  const list = filtered();
+  document.getElementById("t-total").textContent = list.length;
+  document.getElementById("t-in").textContent = list.filter(i => i.state === 1).length;
+  document.getElementById("t-out").textContent = list.filter(i => i.state === 0).length;
+  document.getElementById("t-chg").textContent = list.reduce((s, i) => s + i.restocks, 0);
+  const el = document.getElementById("list");
+  if (!list.length) { el.innerHTML = '<div class="empty">No items match.</div>'; document.getElementById("more").hidden = true; return; }
+  el.innerHTML = `<div class="row head"><span></span><span>Item</span><span>Now</span>${dayLabels()}</div>` + list.slice(0, shown).map(row).join("");
+  const more = document.getElementById("more");
+  more.hidden = list.length <= shown;
+  more.textContent = `Show more (${list.length - shown} left)`;
+}
+
+async function lastChecked(owner, repo) {
+  try {
+    const r = await fetch(`https://api.github.com/repos/${owner}/${repo}/actions/workflows/hw-monitor.yml/runs?per_page=1&status=success`);
+    const run = (await r.json()).workflow_runs[0];
+    if (run) document.getElementById("checked").textContent = `Last check finished ${ago(Date.parse(run.updated_at) / 1000)}.`;
+  } catch (e) {}
+}
+
+// Hover tooltip: state at the hovered moment.
+const tip = document.getElementById("tip");
+document.addEventListener("mousemove", e => {
+  const svg = e.target.closest && e.target.closest(".strip");
+  if (!svg) { tip.style.display = "none"; return; }
+  const i = items.find(x => x.handle === svg.dataset.h);
+  const r = svg.getBoundingClientRect();
+  const t = now - WEEK + ((e.clientX - r.left) / r.width) * WEEK;
+  let st = null;
+  for (const ev of i.events) if (ev[0] <= t) st = ev[1];
+  tip.textContent = `${fmtTime(t)}: ${st === null ? "Not tracked yet" : STATE_NAME[st]}`;
+  tip.style.display = "block";
+  tip.style.left = Math.min(e.clientX + 12, innerWidth - tip.offsetWidth - 8) + "px";
+  tip.style.top = (e.clientY + 14) + "px";
+});
+
+for (const id of ["q", "status", "sort", "merch"]) document.getElementById(id).addEventListener("input", () => { shown = PAGE; render(); });
+document.getElementById("more").addEventListener("click", () => { shown += PAGE; render(); });
+load();
+setInterval(load, 5 * 60 * 1000);
+</script>
+</body>
+</html>

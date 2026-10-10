@@ -16,3 +16,7 @@ The first run saves a baseline to `hw_state.json` and sends nothing. Later runs 
 GitHub's 5-minute schedule is best effort; runs are often delayed, and scheduled workflows pause after 60 days without repository activity (state commits count as activity).
 
 Because GitHub's scheduler has not been starting runs for this repository, each run also starts the next one when it finishes, so checks continue around the clock. To stop it, add a repository variable `HW_CHAIN` with the value `off` (Settings → Secrets and variables → Actions → Variables), or cancel the running job.
+
+## Stock dashboard
+
+`docs/index.html` is a searchable page of every item with its current status and a 7-day in-stock/sold-out timeline, served with GitHub Pages (Settings → Pages → Deploy from branch `main`, folder `/docs`). Each check also updates `docs/stock.json`, which keeps the last 7 days of status changes per item. The store does not publish unit counts, only whether an item can be bought, so the dashboard shows availability rather than quantities.
