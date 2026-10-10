@@ -16,18 +16,17 @@ Setup (once):
 The first run records a baseline and sends nothing.
 Optional: HW_WATCH_SKUS=JJY69,JKC06 to alert only on those item numbers.
 """
-import html, json, os, re, smtplib, sys, time, urllib.request
+import html, json, os, re, smtplib, sys, time, urllib.parse, urllib.request
 from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
 
 URL = "https://creations.mattel.com/collections/hot-wheels-collectors/products.json?limit=250&page={}"
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATE = os.path.join(HERE, "hw_state.json")
-# The store's search provider (Searchspring) lists each variant's sellable quantity.
-COUNTS_URL = ("https://f37vx2.a.searchspring.io/api/search/search.json?siteId=f37vx2&resultsFormat=native"
-              "&resultsPerPage=100&page={}&bgfilter.collection_handle=hot-wheels-collectors")
+# The store's search provider (Searchspring, see _search) lists each variant's sellable quantity.
 QTY_EVERY = 300  # record an item's stock count at most every 5 minutes
 LAUNCH_AGE = 45 * 86400  # look for a launch countdown on sold-out vehicles listed in the last 45 days
+_count_cache = {}  # handle -> (looked_up_at, units or None) for vehicles found by item number
 _launch_cache = {}  # handle -> (checked_at, launch unix time or None)
 HISTORY = os.path.join(HERE, "docs", "stock.json")  # read by the dashboard (docs/index.html)
 WINDOW = 7 * 86400
@@ -36,25 +35,68 @@ SKIP = ("t-shirt", "shirt", "hoodie", "jacket", "jersey", "sweatshirt", "mug", "
 WATCH = {s.strip().upper() for s in os.environ.get("HW_WATCH_SKUS", "").split(",") if s.strip()}
 
 
-def fetch_counts():
-    """Units left per product handle, from the search index (it can lag the store a little)."""
-    counts = {}
+def _search(query):
+    url = ("https://f37vx2.a.searchspring.io/api/search/search.json?siteId=f37vx2&resultsFormat=native&" + query)
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(req, timeout=30) as r:
+        return json.load(r)
+
+
+def _units(res):
+    """Sum of sellable_online_quantity over a search result's variants, or None if it isn't listed."""
+    try:
+        variants = json.loads(html.unescape(res.get("ss_variants") or "[]"))
+    except ValueError:
+        return None
+    qty = [int(v["sellable_online_quantity"]) for v in variants
+           if str(v.get("sellable_online_quantity", "")).lstrip("-").isdigit()]
+    return max(0, sum(qty)) if qty else None
+
+
+def fetch_counts(now):
+    """Units left per product handle, from the search index (it can lag the store a little).
+
+    Reads the whole collection, then looks up any in-stock vehicle it missed by item number.
+    """
+    counts, by_sku, total = {}, {}, 0
     for page in range(1, 30):
-        req = urllib.request.Request(COUNTS_URL.format(page), headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(req, timeout=30) as r:
-            data = json.load(r)
+        data = _search(f"resultsPerPage=100&page={page}&bgfilter.collection_handle=hot-wheels-collectors")
         for res in data.get("results", []):
-            try:
-                variants = json.loads(html.unescape(res.get("ss_variants") or "[]"))
-            except ValueError:
-                continue
-            qty = [v["sellable_online_quantity"] for v in variants
-                   if isinstance(v.get("sellable_online_quantity"), int)]
-            if qty and res.get("handle"):
-                counts[res["handle"]] = max(0, sum(qty))
+            q = _units(res)
+            if q is not None:
+                counts[res.get("handle", "")] = q
+                by_sku[str(res.get("sku", "")).upper()] = q
         pg = data.get("pagination", {})
+        total = pg.get("totalResults", total)
         if pg.get("currentPage", page) >= pg.get("totalPages", 0):
             break
+    found = len(counts)
+    missing = [h for h, i in now.items() if i["vehicle"] and i["available"] and h not in counts]
+    t = time.time()
+    for h in missing[:60]:
+        sku = now[h]["sku"].upper()
+        if sku in by_sku:
+            counts[h] = by_sku[sku]
+            continue
+        checked, q = _count_cache.get(h, (0, None))
+        if t - checked < 600:  # look each one up at most every 10 minutes
+            if q is not None:
+                counts[h] = q
+            continue
+        _count_cache[h] = (t, None)
+        try:
+            for res in _search("resultsPerPage=5&q=" + urllib.parse.quote(sku)).get("results", []):
+                if res.get("handle") == h or str(res.get("sku", "")).upper() == sku:
+                    q = _units(res)
+                    if q is not None:
+                        counts[h] = q
+                        _count_cache[h] = (t, q)
+                        break
+        except Exception as e:
+            print("count lookup failed:", sku, e)
+    still = [now[h]["sku"] for h in missing if h not in counts]
+    print(f"stock counts: {found} from collection ({total} listed), {len(counts) - found} by item number, "
+          f"{len(still)} in-stock vehicles without a count {still[:20]}")
     return counts
 
 
@@ -208,8 +250,7 @@ def check():
     now = fetch()
     counts = None
     try:
-        counts = fetch_counts()
-        print(f"stock counts: {len(counts)} items")
+        counts = fetch_counts(now)
     except Exception as e:
         print("stock count fetch failed:", e)
     try:

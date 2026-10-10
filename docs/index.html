@@ -264,7 +264,7 @@ function row(i) {
   const pill = i.soon ? `<span class="pill soon">◷ Coming soon</span>` : i.state === 1 ? `<span class="pill in">✓ In stock</span>` : i.state === 0 ? `<span class="pill out">✕ Sold out</span>` : `<span class="pill gone">– Removed</span>`;
   const verb = i.state === 1 ? (i.since > i.first_seen + 60 ? "Restocked" : "Listed") : i.state === 0 ? "Sold out" : "Removed";
   const when = i.soon ? `Launches ${fmtTime(i.launch)}` : i.since > now - WEEK && i.events.length > 1 ? `${verb} ${ago(i.since)}` : "";
-  const stock = i.stock === null ? "" : `<div class="stock">${i.stock.toLocaleString()} left</div>`;
+  const stock = i.stock === null || (i.state !== 1 && !i.soon) ? "" : `<div class="stock">${i.stock.toLocaleString()} left</div>`;
   return `<div class="row clk" data-h="${esc(i.handle)}">
     ${img}
     <div style="min-width:0"><a class="title" href="https://creations.mattel.com/products/${encodeURIComponent(i.handle)}" target="_blank" rel="noopener">${esc(i.title)}</a>
