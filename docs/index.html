@@ -10,6 +10,7 @@
   --text: #0b0b0b; --text2: #52514e; --muted: #7a7974; --accent: #2a78d6;
   --instock: #0ca30c; --soldout: #c9c8c2; --untracked: #ecebe6; --gone: #8a8984;
   --pill-in-bg: #e5f5e5; --pill-in: #006300; --pill-out-bg: #efeeea; --pill-out: #52514e;
+  --sold: #d6453d; --restock: #14998f; --line: #2a78d6;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
@@ -68,8 +69,27 @@ h1 { font-size: 22px; margin: 0 0 4px; }
 .more { display: block; margin: 12px auto 0; padding: 8px 16px; font: inherit; color: var(--text);
   background: var(--surface); border: 1px solid var(--border); border-radius: 6px; cursor: pointer; }
 .empty { padding: 24px; text-align: center; color: var(--text2); }
+tr.clk, .row.clk { cursor: pointer; }
+.row.clk:hover { background: var(--bg); }
+.stock { font-weight: 700; font-variant-numeric: tabular-nums; margin-top: 4px; }
+dialog { width: min(960px, calc(100vw - 32px)); max-height: calc(100vh - 32px); padding: 16px; border: 1px solid var(--border);
+  border-radius: 10px; background: var(--surface); color: var(--text); }
+dialog::backdrop { background: rgba(0,0,0,.45); }
+.d-head { display: flex; gap: 12px; justify-content: space-between; align-items: flex-start; }
+.d-title { font-weight: 700; font-size: 16px; }
+.d-close { border: 0; background: none; color: var(--text2); font-size: 18px; cursor: pointer; padding: 4px 8px; }
+.d-ctrl { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 12px 0 6px; }
+.seg { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.seg button { border: 0; background: var(--surface); color: var(--text2); padding: 5px 12px; font: inherit; cursor: pointer; }
+.seg button.on { background: var(--accent); color: #fff; }
+.d-sum { color: var(--text2); font-size: 13px; font-variant-numeric: tabular-nums; }
+.d-legend { display: flex; gap: 14px; color: var(--text2); font-size: 12px; margin-bottom: 4px; }
+.d-legend i { display: inline-block; width: 12px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+#d-chart svg { display: block; width: 100%; height: auto; }
+#d-chart text { fill: var(--muted); font-size: 11px; font-family: inherit; }
+.d-empty { padding: 40px 0; text-align: center; color: var(--text2); }
 #tip { position: fixed; pointer-events: none; background: var(--text); color: var(--bg); font-size: 12px;
-  padding: 4px 8px; border-radius: 4px; white-space: nowrap; display: none; z-index: 10; }
+  padding: 4px 8px; border-radius: 4px; white-space: nowrap; display: none; z-index: 1000; }
 @media (max-width: 720px) {
   .tiles { grid-template-columns: repeat(2, 1fr); }
   .row { grid-template-columns: 48px minmax(0, 1fr); }
@@ -84,12 +104,12 @@ h1 { font-size: 22px; margin: 0 0 4px; }
 <body>
 <div class="wrap">
   <h1>Hot Wheels stock tracker</h1>
-  <p class="sub">Every item in the Mattel Creations Hot Wheels collectors collection. <span id="checked"></span></p>
+  <p class="sub">Every vehicle in the Mattel Creations Hot Wheels collectors collection. <span id="checked"></span></p>
   <div class="tiles">
-    <div class="tile"><b id="t-total">–</b><span>items shown</span></div>
+    <div class="tile"><b id="t-total">–</b><span>vehicles shown</span></div>
     <div class="tile"><b id="t-in">–</b><span>in stock now</span></div>
-    <div class="tile"><b id="t-out">–</b><span>sold out now</span></div>
-    <div class="tile"><b id="t-chg">–</b><span>restocks in last 7 days</span></div>
+    <div class="tile"><b id="t-units">–</b><span>units left</span></div>
+    <div class="tile"><b id="t-sold">–</b><span>units sold in last 7 days</span></div>
   </div>
   <div class="controls">
     <input type="search" id="q" placeholder="Search name or item number (e.g. JJY69)" autocomplete="off">
@@ -103,13 +123,14 @@ h1 { font-size: 22px; margin: 0 0 4px; }
       <option value="recent">Recently changed</option>
       <option value="name">Name</option>
       <option value="price">Price (high to low)</option>
+      <option value="stock">Most units left</option>
+      <option value="sold">Most sold (7 days)</option>
       <option value="pct">Most time in stock</option>
       <option value="new">Newest first</option>
     </select>
-    <label><input type="checkbox" id="merch" checked> Hide apparel &amp; merch</label>
   </div>
-  <p class="note">Mattel's store doesn't publish how many units are left, only whether each item can be bought,
-    so the bars show when each item was in stock over the last 7 days. Data is collected about once a minute.</p>
+  <p class="note">Units left come from the store's search data and are recorded every 5 minutes; they can lag the store slightly.
+    The bars show when each vehicle was in stock over the last 7 days. Click a vehicle to see its stock and sales chart.</p>
   <div class="legend">
     <span><i style="background:var(--instock)"></i>In stock</span>
     <span><i style="background:var(--soldout)"></i>Sold out</span>
@@ -120,8 +141,22 @@ h1 { font-size: 22px; margin: 0 0 4px; }
   <button class="more" id="more" hidden>Show more</button>
 </div>
 <div id="tip"></div>
+<dialog id="detail">
+  <div class="d-head">
+    <div style="min-width:0"><div class="d-title" id="d-title"></div><div class="meta" id="d-meta"></div></div>
+    <button class="d-close" id="d-close" aria-label="Close">✕</button>
+  </div>
+  <div class="d-ctrl">
+    <span class="meta">Range</span>
+    <div class="seg" id="d-range">
+      <button data-r="21600">6h</button><button data-r="86400">24h</button><button data-r="259200">3d</button><button data-r="604800">7d</button>
+    </div>
+    <span class="d-sum" id="d-sum"></span>
+  </div>
+  <div class="d-legend"><span><i style="background:var(--line)"></i>Units left</span><span><i style="background:var(--sold)"></i>Sold</span><span><i style="background:var(--restock)"></i>Restocked</span></div>
+  <div id="d-chart"></div>
+</dialog>
 <script>
-const SKIP = ["t-shirt", "shirt", "hoodie", "jacket", "jersey", "sweatshirt", "mug", "hat", "luggage", "pin"];
 const WEEK = 7 * 86400, PAGE = 60;
 const STATE_NAME = { 1: "In stock", 0: "Sold out", "-1": "Removed from store" };
 let items = [], shown = PAGE, now = Date.now() / 1000;
@@ -146,6 +181,7 @@ async function load() {
   now = Date.now() / 1000;
   items = Object.entries(data.items).map(([handle, d]) => prep(handle, d));
   render();
+  if (dlg.open && cur) openDetail(cur.handle);
   if (owner && repo) lastChecked(owner, repo);
 }
 
@@ -159,10 +195,12 @@ function prep(handle, d) {
     if (ev[i][1] === 1 && i > 0 && ev[i - 1][1] !== 1 && ev[i][0] >= start) restocks++;
   }
   const changes = ev.filter((e, i) => i > 0 && e[0] >= start);
-  const t = d.title.toLowerCase();
+  const qty = d.qty || [];
+  let sold = 0;
+  for (let k = 1; k < qty.length; k++) if (qty[k][0] >= start && qty[k][1] < qty[k - 1][1]) sold += qty[k - 1][1] - qty[k][1];
   return { handle, ...d, state: last[1], since: last[0], firstEvent: ev[0][0], pct: tracked ? inSecs / tracked : 0,
     tracked, restocks, changed: changes.length > 0, lastChange: changes.length ? changes[changes.length - 1][0] : 0,
-    merch: SKIP.some(w => t.includes(w)), search: (d.title + " " + d.sku).toLowerCase() };
+    qty, stock: qty.length ? qty[qty.length - 1][1] : null, sold, search: (d.title + " " + d.sku).toLowerCase() };
 }
 
 function ago(t) {
@@ -178,13 +216,14 @@ const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;",
 function filtered() {
   const q = document.getElementById("q").value.trim().toLowerCase();
   const st = document.getElementById("status").value, sort = document.getElementById("sort").value;
-  const hideMerch = document.getElementById("merch").checked;
-  let out = items.filter(i => (!hideMerch || !i.merch) && (!q || q.split(/\s+/).every(w => i.search.includes(w))) &&
+  let out = items.filter(i => (!q || q.split(/\s+/).every(w => i.search.includes(w))) &&
     (st === "all" || (st === "in" && i.state === 1) || (st === "out" && i.state === 0) || (st === "changed" && i.changed)));
   const by = {
     recent: (a, b) => (b.lastChange - a.lastChange) || (b.state - a.state) || a.title.localeCompare(b.title),
     name: (a, b) => a.title.localeCompare(b.title),
     price: (a, b) => (+b.price - +a.price),
+    stock: (a, b) => ((b.stock ?? -1) - (a.stock ?? -1)) || a.title.localeCompare(b.title),
+    sold: (a, b) => (b.sold - a.sold) || a.title.localeCompare(b.title),
     pct: (a, b) => (b.pct - a.pct) || a.title.localeCompare(b.title),
     new: (a, b) => (b.first_seen - a.first_seen) || a.title.localeCompare(b.title),
   }[sort];
@@ -217,12 +256,13 @@ function row(i) {
   const verb = i.state === 1 ? (i.since > i.first_seen + 60 ? "Restocked" : "Listed") : i.state === 0 ? "Sold out" : "Removed";
   const when = i.since > now - WEEK && i.events.length > 1 ? `${verb} ${ago(i.since)}` : i.first_seen > now - WEEK ? `Tracked since ${ago(i.first_seen)}` : "No change this week";
   const coverage = i.tracked < WEEK - 600 ? " of tracked time" : "";
-  return `<div class="row">
+  const stock = i.stock === null ? "" : `<div class="stock">${i.stock.toLocaleString()} left</div>`;
+  return `<div class="row clk" data-h="${esc(i.handle)}">
     ${img}
     <div style="min-width:0"><a class="title" href="https://creations.mattel.com/products/${encodeURIComponent(i.handle)}" target="_blank" rel="noopener">${esc(i.title)}</a>
       <div class="meta">${esc(i.sku || "no item number")} · $${esc(i.price)}</div></div>
-    <div class="status">${pill}<div class="when">${when}</div></div>
-    <div class="hist"><div class="days m"><span>7 days ago</span><span>now</span></div>${strip(i)}<div class="pct">In stock ${Math.round(i.pct * 100)}%${coverage}${i.restocks ? ` · ${i.restocks} restock${i.restocks > 1 ? "s" : ""}` : ""}</div></div>
+    <div class="status">${pill}${stock}<div class="when">${when}</div></div>
+    <div class="hist"><div class="days m"><span>7 days ago</span><span>now</span></div>${strip(i)}<div class="pct">In stock ${Math.round(i.pct * 100)}%${coverage}${i.sold ? ` · ${i.sold.toLocaleString()} sold` : ""}${i.restocks ? ` · ${i.restocks} restock${i.restocks > 1 ? "s" : ""}` : ""}</div></div>
   </div>`;
 }
 
@@ -230,8 +270,8 @@ function render() {
   const list = filtered();
   document.getElementById("t-total").textContent = list.length;
   document.getElementById("t-in").textContent = list.filter(i => i.state === 1).length;
-  document.getElementById("t-out").textContent = list.filter(i => i.state === 0).length;
-  document.getElementById("t-chg").textContent = list.reduce((s, i) => s + i.restocks, 0);
+  document.getElementById("t-units").textContent = list.reduce((s, i) => s + (i.stock || 0), 0).toLocaleString();
+  document.getElementById("t-sold").textContent = list.reduce((s, i) => s + i.sold, 0).toLocaleString();
   const el = document.getElementById("list");
   if (!list.length) { el.innerHTML = '<div class="empty">No items match.</div>'; document.getElementById("more").hidden = true; return; }
   el.innerHTML = `<div class="row head"><span></span><span>Item</span><span>Now</span>${dayLabels()}</div>` + list.slice(0, shown).map(row).join("");
@@ -248,9 +288,111 @@ async function lastChecked(owner, repo) {
   } catch (e) {}
 }
 
+// Detail panel: units left over time (line) and units sold / restocked per interval (bars).
+const BUCKET = { 21600: 300, 86400: 900, 259200: 3600, 604800: 7200 };
+const dlg = document.getElementById("detail");
+let cur = null, range = 86400, series = [];
+
+function openDetail(h) {
+  cur = items.find(x => x.handle === h);
+  if (!cur) return;
+  document.getElementById("d-title").textContent = cur.title;
+  document.getElementById("d-meta").innerHTML = `${esc(cur.sku)} · $${esc(cur.price)} · <a href="https://creations.mattel.com/products/${encodeURIComponent(cur.handle)}" target="_blank" rel="noopener">Open in store</a>`;
+  drawDetail();
+  if (!dlg.open) { dlg.showModal(); dlg.appendChild(tip); drawDetail(); }
+}
+
+function buildSeries(q, start, step) {
+  const out = [];
+  let k = 0, last = null;
+  for (let t = start; t < now; t += step) {
+    const end = Math.min(t + step, now);
+    while (k < q.length && q[k][0] <= end) { last = q[k][1]; k++; }
+    out.push({ t: end, v: last });
+  }
+  for (let j = 0; j < out.length; j++) {
+    const prev = j ? out[j - 1].v : null, v = out[j].v;
+    out[j].sold = prev !== null && v !== null && v < prev ? prev - v : 0;
+    out[j].restock = prev !== null && v !== null && v > prev ? v - prev : 0;
+  }
+  return out;
+}
+
+const fmtAxis = (t, r) => { const d = new Date(t * 1000);
+  return r <= 86400 ? d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : d.toLocaleDateString([], { month: "short", day: "numeric" }) + (r <= 259200 ? " " + d.toLocaleTimeString([], { hour: "numeric" }) : ""); };
+function nice(max) { const p = Math.pow(10, Math.floor(Math.log10(max || 1))); for (const m of [1, 2, 2.5, 5, 10]) if (m * p >= max) return m * p; return 10 * p; }
+
+function drawDetail() {
+  for (const b of document.querySelectorAll("#d-range button")) b.classList.toggle("on", +b.dataset.r === range);
+  const el = document.getElementById("d-chart"), sum = document.getElementById("d-sum");
+  if (!cur.qty.length) { el.innerHTML = '<div class="d-empty">No unit counts recorded for this vehicle yet.</div>'; sum.textContent = ""; return; }
+  const start = now - range, step = BUCKET[range];
+  series = buildSeries(cur.qty, start, step);
+  const sold = series.reduce((s, p) => s + p.sold, 0), rest = series.reduce((s, p) => s + p.restock, 0);
+  sum.textContent = `${cur.stock.toLocaleString()} left now · ${sold.toLocaleString()} sold${rest ? ` · ${rest.toLocaleString()} restocked` : ""} in this range`;
+  const W = Math.max(320, el.clientWidth || 900), L = 56, R = 12, H1 = W < 600 ? 170 : 230, G = 34, H2 = 120, B = 24, H = H1 + G + H2 + B, pw = W - L - R, n = series.length, bw = pw / n;
+  const vals = series.filter(p => p.v !== null).map(p => p.v);
+  let lo = Math.min(...vals), hi = Math.max(...vals);
+  if (hi === lo) { hi += Math.max(1, hi * 0.05); lo = Math.max(0, lo - Math.max(1, lo * 0.05)); }
+  const pad = (hi - lo) * 0.08; hi += pad; lo = Math.max(0, lo - pad);
+  const y1 = v => 8 + (H1 - 8) * (1 - (v - lo) / (hi - lo)), x = j => L + bw * (j + 0.5);
+  const bmax = nice(Math.max(1, ...series.map(p => Math.max(p.sold, p.restock))));
+  const y2 = v => H1 + G + H2 * (1 - v / bmax);
+  let g = "";
+  for (let k = 0; k <= 4; k++) { const v = lo + (hi - lo) * k / 4, yy = y1(v);
+    g += `<line x1="${L}" x2="${W - R}" y1="${yy}" y2="${yy}" stroke="var(--grid)"/><text x="${L - 6}" y="${yy + 4}" text-anchor="end">${Math.round(v).toLocaleString()}</text>`; }
+  for (let k = 0; k <= 2; k++) { const v = bmax * k / 2, yy = y2(v);
+    g += `<line x1="${L}" x2="${W - R}" y1="${yy}" y2="${yy}" stroke="var(--grid)"/><text x="${L - 6}" y="${yy + 4}" text-anchor="end">${Math.round(v).toLocaleString()}</text>`; }
+  g += `<text x="${L}" y="${H1 + G - 8}">Units sold / restocked per ${step >= 3600 ? step / 3600 + " h" : step / 60 + " min"}</text>`;
+  const ticks = W < 600 ? 3 : 6;
+  for (let k = 0; k <= ticks; k++) { const j = Math.min(n - 1, Math.round((n - 1) * k / ticks));
+    g += `<text x="${x(j)}" y="${H - 6}" text-anchor="${k === 0 ? "start" : k === ticks ? "end" : "middle"}">${fmtAxis(series[j].t, range)}</text>`; }
+  let path = "", area = "", first = null, lastX = 0;
+  series.forEach((p, j) => { if (p.v === null) return; const X = x(j), Y = y1(p.v);
+    if (first === null) { first = X; path += `M${X},${Y}`; } else path += `L${X},${Y}`; lastX = X; });
+  if (first !== null) area = `${path}L${lastX},${H1}L${first},${H1}Z`;
+  g += `<path d="${area}" fill="var(--line)" opacity=".10"/><path d="${path}" fill="none" stroke="var(--line)" stroke-width="2" stroke-linejoin="round"/>`;
+  const gap = Math.min(2, bw * 0.25), w = Math.max(1, bw - gap);
+  series.forEach((p, j) => { const X0 = L + bw * j + gap / 2;
+    const both = p.sold && p.restock, ww = both ? w / 2 : w;
+    if (p.sold) g += `<rect x="${X0}" y="${y2(p.sold)}" width="${ww}" height="${H1 + G + H2 - y2(p.sold)}" rx="${Math.min(2, ww / 2)}" fill="var(--sold)"/>`;
+    if (p.restock) g += `<rect x="${X0 + (both ? ww : 0)}" y="${y2(p.restock)}" width="${ww}" height="${H1 + G + H2 - y2(p.restock)}" rx="${Math.min(2, ww / 2)}" fill="var(--restock)"/>`; });
+  g += `<line x1="${L}" x2="${W - R}" y1="${H1 + G + H2}" y2="${H1 + G + H2}" stroke="var(--border)"/>`;
+  g += `<line id="d-cross" x1="0" x2="0" y1="8" y2="${H1 + G + H2}" stroke="var(--muted)" stroke-dasharray="3 3" visibility="hidden"/>`;
+  g += `<rect id="d-hit" x="${L}" y="0" width="${pw}" height="${H1 + G + H2}" fill="transparent"/>`;
+  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Units left and units sold over time">${g}</svg>`;
+}
+
+document.getElementById("list").addEventListener("click", e => {
+  if (e.target.closest("a")) return;
+  const row = e.target.closest(".row.clk");
+  if (row) openDetail(row.dataset.h);
+});
+document.getElementById("d-range").addEventListener("click", e => { const b = e.target.closest("button"); if (b) { range = +b.dataset.r; drawDetail(); } });
+document.getElementById("d-close").addEventListener("click", () => dlg.close());
+dlg.addEventListener("close", () => { document.body.appendChild(tip); tip.style.display = "none"; });
+dlg.addEventListener("click", e => { if (e.target === dlg) dlg.close(); });
+
+function chartHover(e) {
+  const hit = e.target.closest && e.target.closest("#d-hit");
+  const cross = document.getElementById("d-cross");
+  if (!hit) { if (cross) cross.setAttribute("visibility", "hidden"); return false; }
+  const svg = hit.ownerSVGElement, r = svg.getBoundingClientRect(), vb = svg.viewBox.baseVal;
+  const sx = (e.clientX - r.left) * vb.width / r.width, L = +hit.getAttribute("x"), pw = +hit.getAttribute("width");
+  const j = Math.max(0, Math.min(series.length - 1, Math.floor((sx - L) / pw * series.length)));
+  const p = series[j], X = L + pw / series.length * (j + 0.5);
+  cross.setAttribute("x1", X); cross.setAttribute("x2", X); cross.setAttribute("visibility", "visible");
+  tip.textContent = `${fmtTime(p.t)} · ${p.v === null ? "no data" : p.v.toLocaleString() + " left"}${p.sold ? ` · ${p.sold.toLocaleString()} sold` : ""}${p.restock ? ` · ${p.restock.toLocaleString()} restocked` : ""}`;
+  tip.style.display = "block";
+  tip.style.left = Math.max(8, Math.min(e.clientX + 12, innerWidth - tip.offsetWidth - 8)) + "px";
+  tip.style.top = (e.clientY + 14) + "px";
+  return true;
+}
+
 // Hover tooltip: state at the hovered moment.
 const tip = document.getElementById("tip");
 document.addEventListener("mousemove", e => {
+  if (chartHover(e)) return;
   const svg = e.target.closest && e.target.closest(".strip");
   if (!svg) { tip.style.display = "none"; return; }
   const i = items.find(x => x.handle === svg.dataset.h);
@@ -264,7 +406,7 @@ document.addEventListener("mousemove", e => {
   tip.style.top = (e.clientY + 14) + "px";
 });
 
-for (const id of ["q", "status", "sort", "merch"]) document.getElementById(id).addEventListener("input", () => { shown = PAGE; render(); });
+for (const id of ["q", "status", "sort"]) document.getElementById(id).addEventListener("input", () => { shown = PAGE; render(); });
 document.getElementById("more").addEventListener("click", () => { shown += PAGE; render(); });
 load();
 setInterval(load, 5 * 60 * 1000);

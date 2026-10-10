@@ -1,6 +1,6 @@
 # Hot Wheels stock monitor
 
-Checks the [Mattel Creations Hot Wheels collectors collection](https://creations.mattel.com/collections/hot-wheels-collectors) about once a minute with GitHub Actions (each 5-minute scheduled run checks every 60 seconds for 4.5 minutes) and emails when an item is new or back in stock. Apparel and merch are ignored.
+Checks the [Mattel Creations Hot Wheels collectors collection](https://creations.mattel.com/collections/hot-wheels-collectors) about once a minute with GitHub Actions (each 5-minute scheduled run checks every 60 seconds for 4.5 minutes) and emails when a vehicle is new or back in stock. Only products Mattel tags "Category: Vehicles" count; apparel, decor and other merch are ignored.
 
 ## Setup
 
@@ -19,4 +19,4 @@ Because GitHub's scheduler has not been starting runs for this repository, each 
 
 ## Stock dashboard
 
-`docs/index.html` is a searchable page of every item with its current status and a 7-day in-stock/sold-out timeline, served with GitHub Pages (Settings → Pages → Deploy from branch `main`, folder `/docs`). Each check also updates `docs/stock.json`, which keeps the last 7 days of status changes per item. The store does not publish unit counts, only whether an item can be bought, so the dashboard shows availability rather than quantities.
+`docs/index.html` is a searchable page of every vehicle with its current status, units left, and a 7-day in-stock/sold-out timeline; clicking a vehicle shows units left over time and units sold or restocked per interval, served with GitHub Pages (Settings → Pages → Deploy from branch `main`, folder `/docs`). Each check also updates `docs/stock.json`, which keeps the last 7 days of status changes per vehicle and, every 5 minutes at most, its units left. Units left come from the store's search provider (Searchspring), which lists each variant's sellable quantity; it can lag the store slightly.
