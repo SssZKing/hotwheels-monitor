@@ -80,6 +80,7 @@ def fetch():
                 "available": any(x.get("available") for x in v),
                 "image": (p.get("images") or [{}])[0].get("src", ""),
                 "vehicle": is_vehicle(p),
+                "listed": p.get("created_at") or p.get("published_at") or "",
             }
     return items
 
@@ -123,7 +124,8 @@ def record_history(all_now, counts=None):
     now = {h: i for h, i in all_now.items() if i["vehicle"]}
     for h, i in now.items():
         rec = items.setdefault(h, {"first_seen": t, "events": []})
-        rec.update(title=i["title"], sku=i["sku"], price=i["price"], image=i["image"] or rec.get("image", ""))
+        rec.update(title=i["title"], sku=i["sku"], price=i["price"], image=i["image"] or rec.get("image", ""),
+                   listed=i.get("listed", ""))
         state = 1 if i["available"] else 0
         if not rec["events"] or rec["events"][-1][1] != state:
             rec["events"].append([t, state])

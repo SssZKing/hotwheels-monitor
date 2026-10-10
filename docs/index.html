@@ -231,7 +231,7 @@ function filtered() {
     stock: (a, b) => ((b.stock ?? -1) - (a.stock ?? -1)) || a.title.localeCompare(b.title),
     sold: (a, b) => (b.sold - a.sold) || a.title.localeCompare(b.title),
     pct: (a, b) => (b.pct - a.pct) || a.title.localeCompare(b.title),
-    new: (a, b) => (b.first_seen - a.first_seen) || a.title.localeCompare(b.title),
+    new: (a, b) => (Date.parse(b.listed || 0) || 0) - (Date.parse(a.listed || 0) || 0) || a.title.localeCompare(b.title),
   }[sort];
   return out.sort(by);
 }
