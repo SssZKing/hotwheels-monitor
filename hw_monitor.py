@@ -16,7 +16,8 @@ Setup (once):
 The first run records a baseline and sends nothing.
 Optional: HW_WATCH_SKUS=JJY69,JKC06 to alert only on those item numbers.
 """
-import html, json, os, smtplib, sys, time, urllib.request
+import html, json, os, re, smtplib, sys, time, urllib.request
+from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
 
 URL = "https://creations.mattel.com/collections/hot-wheels-collectors/products.json?limit=250&page={}"
@@ -26,6 +27,8 @@ STATE = os.path.join(HERE, "hw_state.json")
 COUNTS_URL = ("https://f37vx2.a.searchspring.io/api/search/search.json?siteId=f37vx2&resultsFormat=native"
               "&resultsPerPage=100&page={}&bgfilter.collection_handle=hot-wheels-collectors")
 QTY_EVERY = 300  # record an item's stock count at most every 5 minutes
+LAUNCH_AGE = 45 * 86400  # look for a launch countdown on sold-out vehicles listed in the last 45 days
+_launch_cache = {}  # handle -> (checked_at, launch unix time or None)
 HISTORY = os.path.join(HERE, "docs", "stock.json")  # read by the dashboard (docs/index.html)
 WINDOW = 7 * 86400
 TO = os.environ.get("HW_EMAIL_TO") or os.environ.get("HW_GMAIL_USER", "")
@@ -53,6 +56,45 @@ def fetch_counts():
         if pg.get("currentPage", page) >= pg.get("totalPages", 0):
             break
     return counts
+
+
+def fetch_launch(handle):
+    """Launch time of a "Coming Soon" product, read from its page's countdown, else None."""
+    req = urllib.request.Request(f"https://creations.mattel.com/products/{handle}", headers={"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(req, timeout=30) as r:
+        page = r.read().decode("utf-8", "replace")
+    m = re.search(r"SDG\.Data\.comingSoon\s*=\s*\{(.*?)\}", page, re.S)
+    if not m or not re.search(r"isComingSoon:\s*1", m.group(1)):
+        return None
+    e = re.search(r'expiry:\s*"([A-Za-z]+ \d+ \d{4}, \d\d:\d\d:\d\d) (P[DS]T)"', m.group(1))
+    if not e:
+        return None
+    tz = timezone(timedelta(hours=-7 if e.group(2) == "PDT" else -8))
+    return int(datetime.strptime(e.group(1), "%B %d %Y, %H:%M:%S").replace(tzinfo=tz).timestamp())
+
+
+def find_launches(now):
+    """Launch times for recently listed vehicles that can't be bought yet (each page re-read every 30 min)."""
+    t, out = time.time(), {}
+    for h, i in now.items():
+        if not i["vehicle"] or i["available"] or not i.get("listed"):
+            continue
+        try:
+            age = t - datetime.fromisoformat(i["listed"]).timestamp()
+        except ValueError:
+            continue
+        if age > LAUNCH_AGE:
+            continue
+        checked, launch = _launch_cache.get(h, (0, None))
+        if t - checked > 1800:
+            try:
+                launch = fetch_launch(h)
+            except Exception as e:
+                print("launch check failed:", h, e)
+            _launch_cache[h] = (t, launch)
+        if launch and launch > t:
+            out[h] = launch
+    return out
 
 
 def is_vehicle(p):
@@ -105,7 +147,7 @@ def save_state(now):
     json.dump({h: {k: i[k] for k in keep} for h, i in now.items()}, open(STATE, "w"))
 
 
-def record_history(all_now, counts=None):
+def record_history(all_now, counts=None, launches=None):
     """Keep 7 days of in/out-of-stock changes per item for the dashboard.
 
     Each item keeps "events", a list of [unix_time, 1 in stock / 0 sold out / -1 removed]
@@ -126,6 +168,10 @@ def record_history(all_now, counts=None):
         rec = items.setdefault(h, {"first_seen": t, "events": []})
         rec.update(title=i["title"], sku=i["sku"], price=i["price"], image=i["image"] or rec.get("image", ""),
                    listed=i.get("listed", ""))
+        if (launches or {}).get(h):
+            rec["launch"] = launches[h]
+        else:
+            rec.pop("launch", None)
         state = 1 if i["available"] else 0
         if not rec["events"] or rec["events"][-1][1] != state:
             rec["events"].append([t, state])
@@ -167,7 +213,7 @@ def check():
     except Exception as e:
         print("stock count fetch failed:", e)
     try:
-        record_history(now, counts)
+        record_history(now, counts, find_launches(now))
     except Exception as e:  # the dashboard must never stop the alerts
         print("history update failed:", e)
     if not os.path.exists(STATE):

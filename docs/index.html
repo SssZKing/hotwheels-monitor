@@ -10,6 +10,7 @@
   --text: #0b0b0b; --text2: #52514e; --muted: #7a7974; --accent: #2a78d6;
   --instock: #0ca30c; --soldout: #c9c8c2; --untracked: #ecebe6; --gone: #8a8984;
   --pill-in-bg: #e5f5e5; --pill-in: #006300; --pill-out-bg: #efeeea; --pill-out: #52514e;
+  --pill-soon-bg: #e3eefb; --pill-soon: #1c5cab;
   --sold: #d6453d; --restock: #14998f; --line: #2a78d6;
 }
 @media (prefers-color-scheme: dark) {
@@ -17,14 +18,14 @@
     --bg: #111110; --surface: #1a1a19; --border: #2e2e2c; --grid: #262624;
     --text: #f0efec; --text2: #c3c2b7; --muted: #8f8e88; --accent: #3987e5;
     --soldout: #4a4a47; --untracked: #242422; --gone: #77766f;
-    --pill-in-bg: #143514; --pill-in: #7fdc7f; --pill-out-bg: #2a2a28; --pill-out: #c3c2b7;
+    --pill-in-bg: #143514; --pill-in: #7fdc7f; --pill-out-bg: #2a2a28; --pill-out: #c3c2b7; --pill-soon-bg: #16304f; --pill-soon: #8dbcf2;
   }
 }
 :root[data-theme="dark"] {
   --bg: #111110; --surface: #1a1a19; --border: #2e2e2c; --grid: #262624;
   --text: #f0efec; --text2: #c3c2b7; --muted: #8f8e88; --accent: #3987e5;
   --soldout: #4a4a47; --untracked: #242422; --gone: #77766f;
-  --pill-in-bg: #143514; --pill-in: #7fdc7f; --pill-out-bg: #2a2a28; --pill-out: #c3c2b7;
+  --pill-in-bg: #143514; --pill-in: #7fdc7f; --pill-out-bg: #2a2a28; --pill-out: #c3c2b7; --pill-soon-bg: #16304f; --pill-soon: #8dbcf2;
 }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--text);
@@ -60,6 +61,7 @@ h1 { font-size: 22px; margin: 0 0 4px; }
   font-size: 12px; font-weight: 600; white-space: nowrap; }
 .pill.in { background: var(--pill-in-bg); color: var(--pill-in); }
 .pill.out { background: var(--pill-out-bg); color: var(--pill-out); }
+.pill.soon { background: var(--pill-soon-bg); color: var(--pill-soon); }
 .pill.gone { background: var(--pill-out-bg); color: var(--muted); }
 .when { color: var(--muted); font-size: 12px; margin-top: 3px; }
 .strip { width: 100%; height: 18px; display: block; cursor: crosshair; }
@@ -117,6 +119,7 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
       <option value="all">All items</option>
       <option value="in">In stock</option>
       <option value="out">Sold out</option>
+      <option value="soon">Coming soon</option>
       <option value="changed">Changed in 7 days</option>
     </select>
     <select id="sort" aria-label="Sort">
@@ -206,7 +209,7 @@ function prep(handle, d) {
   for (let k = 1; k < qty.length; k++) if (qty[k][0] >= start && qty[k][1] < qty[k - 1][1]) sold += qty[k - 1][1] - qty[k][1];
   return { handle, ...d, state: last[1], since: last[0], firstEvent: ev[0][0], pct: tracked ? inSecs / tracked : 0,
     tracked, restocks, changed: changes.length > 0, lastChange: changes.length ? changes[changes.length - 1][0] : 0,
-    qty, stock: qty.length ? qty[qty.length - 1][1] : null, sold, search: (d.title + " " + d.sku).toLowerCase() };
+    soon: !!d.launch && d.launch > now && last[1] !== 1, qty, stock: qty.length ? qty[qty.length - 1][1] : null, sold, search: (d.title + " " + d.sku).toLowerCase() };
 }
 
 function ago(t) {
@@ -223,7 +226,7 @@ function filtered() {
   const q = document.getElementById("q").value.trim().toLowerCase();
   const st = document.getElementById("status").value, sort = document.getElementById("sort").value;
   let out = items.filter(i => (!q || q.split(/\s+/).every(w => i.search.includes(w))) &&
-    (st === "all" || (st === "in" && i.state === 1) || (st === "out" && i.state === 0) || (st === "changed" && i.changed)));
+    (st === "all" || (st === "in" && i.state === 1) || (st === "out" && i.state === 0 && !i.soon) || (st === "soon" && i.soon) || (st === "changed" && i.changed)));
   const by = {
     recent: (a, b) => (b.lastChange - a.lastChange) || (b.state - a.state) || a.title.localeCompare(b.title),
     name: (a, b) => a.title.localeCompare(b.title),
@@ -258,9 +261,9 @@ function dayLabels() {
 
 function row(i) {
   const img = i.image ? `<img class="thumb" loading="lazy" alt="" onerror="this.style.visibility=\'hidden\'" src="${esc(i.image + (i.image.includes("?") ? "&" : "?") + "width=160")}">` : `<div class="noimg"></div>`;
-  const pill = i.state === 1 ? `<span class="pill in">✓ In stock</span>` : i.state === 0 ? `<span class="pill out">✕ Sold out</span>` : `<span class="pill gone">– Removed</span>`;
+  const pill = i.soon ? `<span class="pill soon">◷ Coming soon</span>` : i.state === 1 ? `<span class="pill in">✓ In stock</span>` : i.state === 0 ? `<span class="pill out">✕ Sold out</span>` : `<span class="pill gone">– Removed</span>`;
   const verb = i.state === 1 ? (i.since > i.first_seen + 60 ? "Restocked" : "Listed") : i.state === 0 ? "Sold out" : "Removed";
-  const when = i.since > now - WEEK && i.events.length > 1 ? `${verb} ${ago(i.since)}` : "";
+  const when = i.soon ? `Launches ${fmtTime(i.launch)}` : i.since > now - WEEK && i.events.length > 1 ? `${verb} ${ago(i.since)}` : "";
   const stock = i.stock === null ? "" : `<div class="stock">${i.stock.toLocaleString()} left</div>`;
   return `<div class="row clk" data-h="${esc(i.handle)}">
     ${img}
