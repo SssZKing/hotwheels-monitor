@@ -161,18 +161,24 @@ const WEEK = 7 * 86400, PAGE = 60;
 const STATE_NAME = { 1: "In stock", 0: "Sold out", "-1": "Removed from store" };
 let items = [], shown = PAGE, now = Date.now() / 1000;
 
-// On GitHub Pages, read the data straight from the repository so it is never behind a Pages rebuild.
-function dataUrls() {
+// On GitHub Pages, read the data straight from the repository's latest commit so it is never
+// behind a Pages rebuild or a cached copy of the branch.
+async function dataUrls() {
   const m = location.hostname.match(/^([^.]+)\.github\.io$/);
   const repo = location.pathname.split("/").filter(Boolean)[0];
   const urls = [];
-  if (m && repo) urls.push(`https://raw.githubusercontent.com/${m[1]}/${repo}/main/docs/stock.json`);
+  if (m && repo) {
+    try {
+      const r = await fetch(`https://api.github.com/repos/${m[1]}/${repo}/commits/main`, { cache: "no-store" });
+      if (r.ok) urls.push(`https://raw.githubusercontent.com/${m[1]}/${repo}/${(await r.json()).sha}/docs/stock.json`);
+    } catch (e) {}
+  }
   urls.push("stock.json");
   return { urls, owner: m && m[1], repo };
 }
 
 async function load() {
-  const { urls, owner, repo } = dataUrls();
+  const { urls, owner, repo } = await dataUrls();
   let data;
   for (const u of urls) {
     try { const r = await fetch(u + "?t=" + Math.floor(Date.now() / 60000), { cache: "no-store" }); if (r.ok) { data = await r.json(); break; } } catch (e) {}
