@@ -20,7 +20,10 @@ import json, os, smtplib, sys, time, urllib.request
 from email.message import EmailMessage
 
 URL = "https://creations.mattel.com/collections/hot-wheels-collectors/products.json?limit=250&page={}"
-STATE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "hw_state.json")
+HERE = os.path.dirname(os.path.abspath(__file__))
+STATE = os.path.join(HERE, "hw_state.json")
+HISTORY = os.path.join(HERE, "docs", "stock.json")  # read by the dashboard (docs/index.html)
+WINDOW = 7 * 86400
 TO = os.environ.get("HW_EMAIL_TO") or os.environ.get("HW_GMAIL_USER", "")
 SKIP = ("t-shirt", "shirt", "hoodie", "jacket", "jersey", "sweatshirt", "mug", "hat", "luggage", "pin")
 WATCH = {s.strip().upper() for s in os.environ.get("HW_WATCH_SKUS", "").split(",") if s.strip()}
@@ -41,6 +44,7 @@ def fetch():
                 "sku": (v[0].get("sku") or "") if v else "",
                 "price": v[0].get("price") if v else "",
                 "available": any(x.get("available") for x in v),
+                "image": (p.get("images") or [{}])[0].get("src", ""),
             }
     return items
 
@@ -60,10 +64,60 @@ def send(subject, body):
         s.send_message(msg)
 
 
+def save_state(now):
+    keep = ("title", "sku", "price", "available")
+    json.dump({h: {k: i[k] for k in keep} for h, i in now.items()}, open(STATE, "w"))
+
+
+def record_history(now):
+    """Keep 7 days of in/out-of-stock changes per item for the dashboard.
+
+    The store does not publish stock counts, only whether each item can be bought,
+    so each item keeps a list of [unix_time, 1 in stock / 0 sold out / -1 removed]
+    changes. The newest change older than 7 days is kept so the dashboard knows each
+    item's state for the whole week.
+    """
+    t = int(time.time())
+    try:
+        data = json.load(open(HISTORY))
+    except (OSError, ValueError):
+        data = {"items": {}}
+    items = data["items"]
+    for h, i in now.items():
+        rec = items.setdefault(h, {"first_seen": t, "events": []})
+        rec.update(title=i["title"], sku=i["sku"], price=i["price"], image=i["image"] or rec.get("image", ""))
+        state = 1 if i["available"] else 0
+        if not rec["events"] or rec["events"][-1][1] != state:
+            rec["events"].append([t, state])
+    for h, rec in items.items():
+        if h not in now and rec["events"] and rec["events"][-1][1] != -1:
+            rec["events"].append([t, -1])
+    cutoff = t - WINDOW
+    for h in list(items):
+        ev = items[h]["events"]
+        old = [e for e in ev if e[0] < cutoff]
+        ev = old[-1:] + [e for e in ev if e[0] >= cutoff]
+        if len(ev) == 1 and ev[0][1] == -1 and ev[0][0] < cutoff:
+            del items[h]  # gone from the store for over a week
+        else:
+            items[h]["events"] = ev
+    out = json.dumps({"items": items}, separators=(",", ":"), sort_keys=True)
+    try:
+        if open(HISTORY).read() == out:
+            return
+    except OSError:
+        os.makedirs(os.path.dirname(HISTORY), exist_ok=True)
+    open(HISTORY, "w").write(out)
+
+
 def check():
     now = fetch()
+    try:
+        record_history(now)
+    except Exception as e:  # the dashboard must never stop the alerts
+        print("history update failed:", e)
     if not os.path.exists(STATE):
-        json.dump(now, open(STATE, "w"))
+        save_state(now)
         print(f"Baseline saved: {len(now)} items")
         return
     old = json.load(open(STATE))
@@ -80,7 +134,7 @@ def check():
                              f"  https://creations.mattel.com/products/{h}")
         send(f"Hot Wheels alert: {len(new)} new, {len(back)} restocked", "\n\n".join(lines))
         print("\n".join(lines))
-    json.dump(now, open(STATE, "w"))
+    save_state(now)
 
 
 if __name__ == "__main__":
