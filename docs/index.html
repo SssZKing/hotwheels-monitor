@@ -260,15 +260,14 @@ function row(i) {
   const img = i.image ? `<img class="thumb" loading="lazy" alt="" onerror="this.style.visibility=\'hidden\'" src="${esc(i.image + (i.image.includes("?") ? "&" : "?") + "width=160")}">` : `<div class="noimg"></div>`;
   const pill = i.state === 1 ? `<span class="pill in">✓ In stock</span>` : i.state === 0 ? `<span class="pill out">✕ Sold out</span>` : `<span class="pill gone">– Removed</span>`;
   const verb = i.state === 1 ? (i.since > i.first_seen + 60 ? "Restocked" : "Listed") : i.state === 0 ? "Sold out" : "Removed";
-  const when = i.since > now - WEEK && i.events.length > 1 ? `${verb} ${ago(i.since)}` : i.first_seen > now - WEEK ? `Tracked since ${ago(i.first_seen)}` : "No change this week";
-  const coverage = i.tracked < WEEK - 600 ? " of tracked time" : "";
+  const when = i.since > now - WEEK && i.events.length > 1 ? `${verb} ${ago(i.since)}` : "";
   const stock = i.stock === null ? "" : `<div class="stock">${i.stock.toLocaleString()} left</div>`;
   return `<div class="row clk" data-h="${esc(i.handle)}">
     ${img}
     <div style="min-width:0"><a class="title" href="https://creations.mattel.com/products/${encodeURIComponent(i.handle)}" target="_blank" rel="noopener">${esc(i.title)}</a>
       <div class="meta">${esc(i.sku || "no item number")} · $${esc(i.price)}</div></div>
-    <div class="status">${pill}${stock}<div class="when">${when}</div></div>
-    <div class="hist"><div class="days m"><span>7 days ago</span><span>now</span></div>${strip(i)}<div class="pct">In stock ${Math.round(i.pct * 100)}%${coverage}${i.sold ? ` · ${i.sold.toLocaleString()} sold` : ""}${i.restocks ? ` · ${i.restocks} restock${i.restocks > 1 ? "s" : ""}` : ""}</div></div>
+    <div class="status">${pill}${stock}${when ? `<div class="when">${when}</div>` : ""}</div>
+    <div class="hist"><div class="days m"><span>7 days ago</span><span>now</span></div>${strip(i)}<div class="pct">In stock ${Math.round(i.pct * 100)}%${i.sold ? ` · ${i.sold.toLocaleString()} sold` : ""}${i.restocks ? ` · ${i.restocks} restock${i.restocks > 1 ? "s" : ""}` : ""}</div></div>
   </div>`;
 }
 
