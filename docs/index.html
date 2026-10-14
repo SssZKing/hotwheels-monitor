@@ -11,6 +11,7 @@
   --instock: #0ca30c; --soldout: #c9c8c2; --untracked: #ecebe6; --gone: #8a8984;
   --pill-in-bg: #e5f5e5; --pill-in: #006300; --pill-out-bg: #efeeea; --pill-out: #52514e;
   --pill-soon-bg: #e3eefb; --pill-soon: #1c5cab;
+  --low: #fab219; --verylow: #d03b3b;
   --sold: #d6453d; --restock: #14998f; --line: #2a78d6;
 }
 @media (prefers-color-scheme: dark) {
@@ -70,6 +71,7 @@ h1 { font-size: 22px; margin: 0 0 4px; }
 .pct { color: var(--text2); font-size: 12px; margin-top: 3px; font-variant-numeric: tabular-nums; }
 .more { display: block; margin: 12px auto 0; padding: 8px 16px; font: inherit; color: var(--text);
   background: var(--surface); border: 1px solid var(--border); border-radius: 6px; cursor: pointer; }
+.more[hidden] { display: none; }
 .empty { padding: 24px; text-align: center; color: var(--text2); }
 tr.clk, .row.clk { cursor: pointer; }
 .row.clk:hover { background: var(--bg); }
@@ -135,7 +137,9 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
   <p class="note">Units left come from the store's search data and are recorded every 5 minutes; they can lag the store slightly.
     The bars show when each vehicle was in stock over the last 7 days. Click a vehicle to see its stock and sales chart.</p>
   <div class="legend">
-    <span><i style="background:var(--instock)"></i>In stock</span>
+    <span><i style="background:var(--instock)"></i>In stock (2,000+ left or count unknown)</span>
+    <span><i style="background:var(--low)"></i>Under 2,000 left</span>
+    <span><i style="background:var(--verylow)"></i>Under 500 left</span>
     <span><i style="background:var(--soldout)"></i>Sold out</span>
     <span><i style="background:var(--gone)"></i>Removed from store</span>
     <span><i style="background:var(--untracked);outline:1px solid var(--border)"></i>Not tracked yet</span>
@@ -206,7 +210,7 @@ function prep(handle, d) {
   const changes = ev.filter((e, i) => i > 0 && e[0] >= start);
   const qty = d.qty || [];
   let sold = 0;
-  for (let k = 1; k < qty.length; k++) if (qty[k][0] >= start && qty[k][1] < qty[k - 1][1]) sold += qty[k - 1][1] - qty[k][1];
+  for (let k = 1; k < qty.length; k++) if (qty[k][0] >= start && qty[k][1] < qty[k - 1][1] && qty[k][1] > 0) sold += qty[k - 1][1] - qty[k][1];
   return { handle, ...d, state: last[1], since: last[0], firstEvent: ev[0][0], pct: tracked ? inSecs / tracked : 0,
     tracked, restocks, changed: changes.length > 0, lastChange: changes.length ? changes[changes.length - 1][0] : 0,
     soon: !!d.launch && d.launch > now && last[1] !== 1, qty, stock: qty.length ? qty[qty.length - 1][1] : null, sold, search: (d.title + " " + d.sku).toLowerCase() };
@@ -239,15 +243,26 @@ function filtered() {
   return out.sort(by);
 }
 
+// Units left at time t (last count at or before t), or null.
+function qtyAt(q, t) { let v = null; for (const e of q) { if (e[0] > t) break; v = e[1]; } return v; }
+const LOW = 2000, VERY_LOW = 500;
+const levelColor = v => v === null || v <= 0 || v >= LOW ? "var(--instock)" : v < VERY_LOW ? "var(--verylow)" : "var(--low)";
+
 function strip(i) {
   const start = now - WEEK, W = 700, x = t => ((Math.max(t, start) - start) / WEEK) * W;
-  const color = { 1: "var(--instock)", 0: "var(--soldout)", "-1": "var(--gone)" };
+  const color = { 0: "var(--soldout)", "-1": "var(--gone)" };
   let svg = `<rect x="0" y="0" width="${W}" height="18" rx="3" fill="var(--untracked)"/>`;
-  const ev = i.events;
+  const segs = [];  // [from, to, color], neighbours with the same color merged so there are no seams
+  const ev = i.events, rect = (a, b, c) => { const l = segs[segs.length - 1];
+    if (l && l[2] === c && Math.abs(l[1] - a) < 0.01) l[1] = b; else if (b - a > 0.01) segs.push([a, b, c]); };
   for (let k = 0; k < ev.length; k++) {
-    const a = x(ev[k][0]), b = k + 1 < ev.length ? x(ev[k + 1][0]) : W;
-    if (b - a > 0.01) svg += `<rect x="${a.toFixed(2)}" y="0" width="${Math.max(b - a, 1).toFixed(2)}" height="18" fill="${color[ev[k][1]]}"/>`;
+    const t0 = ev[k][0], t1 = k + 1 < ev.length ? ev[k + 1][0] : now;
+    if (ev[k][1] !== 1) { rect(x(t0), x(t1), color[ev[k][1]]); continue; }
+    // In stock: color each stretch by units left (green 2,000+, yellow under 2,000, red under 500).
+    const cuts = [t0, ...i.qty.map(e => e[0]).filter(t => t > t0 && t < t1), t1];
+    for (let c = 0; c + 1 < cuts.length; c++) rect(x(cuts[c]), x(cuts[c + 1]), levelColor(qtyAt(i.qty, cuts[c])));
   }
+  for (const [a, b, c] of segs) svg += `<rect x="${a.toFixed(2)}" y="0" width="${Math.max(b - a, 1).toFixed(2)}" height="18" fill="${c}"/>`;
   for (let d = 1; d < 7; d++) svg += `<line x1="${d * W / 7}" x2="${d * W / 7}" y1="0" y2="18" stroke="var(--surface)" stroke-width="1.5"/>`;
   return `<svg class="strip" viewBox="0 0 ${W} 18" preserveAspectRatio="none" data-h="${esc(i.handle)}" role="img"
     aria-label="${Math.round(i.pct * 100)}% of tracked time in stock over the last 7 days">${svg}</svg>`;
@@ -264,7 +279,7 @@ function row(i) {
   const pill = i.soon ? `<span class="pill soon">◷ Coming soon</span>` : i.state === 1 ? `<span class="pill in">✓ In stock</span>` : i.state === 0 ? `<span class="pill out">✕ Sold out</span>` : `<span class="pill gone">– Removed</span>`;
   const verb = i.state === 1 ? (i.since > i.first_seen + 60 ? "Restocked" : "Listed") : i.state === 0 ? "Sold out" : "Removed";
   const when = i.soon ? `Launches ${fmtTime(i.launch)}` : i.since > now - WEEK && i.events.length > 1 ? `${verb} ${ago(i.since)}` : "";
-  const stock = i.stock === null || (i.state !== 1 && !i.soon) ? "" : `<div class="stock">${i.stock.toLocaleString()} left</div>`;
+  const stock = i.stock === null || i.stock <= 0 || (i.state !== 1 && !i.soon) ? "" : `<div class="stock">${i.stock.toLocaleString()} left</div>`;
   return `<div class="row clk" data-h="${esc(i.handle)}">
     ${img}
     <div style="min-width:0"><a class="title" href="https://creations.mattel.com/products/${encodeURIComponent(i.handle)}" target="_blank" rel="noopener">${esc(i.title)}</a>
@@ -320,7 +335,7 @@ function buildSeries(q, start, step) {
   }
   for (let j = 0; j < out.length; j++) {
     const prev = j ? out[j - 1].v : null, v = out[j].v;
-    out[j].sold = prev !== null && v !== null && v < prev ? prev - v : 0;
+    out[j].sold = prev !== null && v !== null && v < prev && v > 0 ? prev - v : 0;
     out[j].restock = prev !== null && v !== null && v > prev ? v - prev : 0;
   }
   return out;
@@ -337,7 +352,7 @@ function drawDetail() {
   const start = now - range, step = BUCKET[range];
   series = buildSeries(cur.qty, start, step);
   const sold = series.reduce((s, p) => s + p.sold, 0), rest = series.reduce((s, p) => s + p.restock, 0);
-  sum.textContent = `${cur.stock.toLocaleString()} left now · ${sold.toLocaleString()} sold${rest ? ` · ${rest.toLocaleString()} restocked` : ""} in this range`;
+  sum.textContent = `${cur.stock > 0 || cur.state !== 1 ? cur.stock.toLocaleString() + " left now" : "Count not available yet"} · ${sold.toLocaleString()} sold${rest ? ` · ${rest.toLocaleString()} restocked` : ""} in this range`;
   const W = Math.max(320, el.clientWidth || 900), L = 56, R = 12, H1 = W < 600 ? 170 : 230, G = 34, H2 = 120, B = 24, H = H1 + G + H2 + B, pw = W - L - R, n = series.length, bw = pw / n;
   const vals = series.filter(p => p.v !== null).map(p => p.v);
   let lo = Math.min(...vals), hi = Math.max(...vals);
@@ -408,7 +423,8 @@ document.addEventListener("mousemove", e => {
   const t = now - WEEK + ((e.clientX - r.left) / r.width) * WEEK;
   let st = null;
   for (const ev of i.events) if (ev[0] <= t) st = ev[1];
-  tip.textContent = `${fmtTime(t)}: ${st === null ? "Not tracked yet" : STATE_NAME[st]}`;
+  const q = st === 1 ? qtyAt(i.qty, t) : null;
+  tip.textContent = `${fmtTime(t)}: ${st === null ? "Not tracked yet" : STATE_NAME[st]}${q > 0 ? ` · ${q.toLocaleString()} left` : ""}`;
   tip.style.display = "block";
   tip.style.left = Math.min(e.clientX + 12, innerWidth - tip.offsetWidth - 8) + "px";
   tip.style.top = (e.clientY + 14) + "px";
