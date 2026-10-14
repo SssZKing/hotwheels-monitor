@@ -218,6 +218,8 @@ def record_history(all_now, counts=None, launches=None):
         if not rec["events"] or rec["events"][-1][1] != state:
             rec["events"].append([t, state])
         q = (counts or {}).get(h)
+        if q is not None and q <= 0 and i["available"]:
+            q = None  # the search index lags restocks; don't record 0 left for a vehicle on sale
         if q is not None:
             qty = rec.setdefault("qty", [])
             if not qty or (qty[-1][1] != q and t - qty[-1][0] >= QTY_EVERY):
